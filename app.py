@@ -1,24 +1,67 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
-import joblib
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
+import matplotlib.pyplot as plt
 
-# Load the trained model
-model = joblib.load("xgboost_model.pkl")  # Ensure this file is in your repo
+# Page config
+st.set_page_config(page_title="Air Quality Prediction", layout="wide")
 
-st.title("Air Quality Index (AQI) Prediction")
+# Load dataset
+@st.cache_data
+def load_data():
+    return pd.read_csv("synthetic_air_quality_data.csv")
 
-# Collect inputs
-pm25 = st.number_input("PM2.5", min_value=0.0)
-pm10 = st.number_input("PM10", min_value=0.0)
-no2 = st.number_input("NO2", min_value=0.0)
-so2 = st.number_input("SO2", min_value=0.0)
-co = st.number_input("CO", min_value=0.0)
-o3 = st.number_input("O3", min_value=0.0)
-temp = st.number_input("Temperature (°C)", min_value=-10.0)
-humidity = st.number_input("Humidity (%)", min_value=0.0)
-wind = st.number_input("Wind Speed (m/s)", min_value=0.0)
+data = load_data()
+st.title("Air Quality Prediction App")
 
-if st.button("Predict AQI"):
-    features = np.array([[pm25, pm10, no2, so2, co, o3, temp, humidity, wind]])
-    aqi = model.predict(features)[0]
-    st.success(f"Predicted AQI: {aqi:.2f}")
+# Show dataset
+with st.expander("View Dataset"):
+    st.dataframe(data)
+
+# Feature selection
+X = data.drop(columns=["AQI"])
+y = data["AQI"]
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Model training
+@st.cache_resource
+def train_model():
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    return model
+
+model = train_model()
+
+# Predict and evaluate
+y_pred = model.predict(X_test)
+mse = mean_squared_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+
+st.markdown(f"**Model Performance**  \nMean Squared Error: `{mse:.2f}`  \nR² Score: `{r2:.2f}`")
+
+# User input for prediction
+st.subheader("Predict AQI")
+user_input = {}
+
+cols = st.columns(len(X.columns))
+for i, col in enumerate(X.columns):
+    val = cols[i].number_input(f"{col}", float(X[col].min()), float(X[col].max()), float(X[col].mean()))
+    user_input[col] = val
+
+input_df = pd.DataFrame([user_input])
+prediction = model.predict(input_df)[0]
+st.success(f"Predicted AQI: {prediction:.2f}")
+
+# Plot actual vs predicted
+st.subheader("Actual vs Predicted AQI")
+fig, ax = plt.subplots()
+ax.scatter(y_test, y_pred, alpha=0.5)
+ax.plot([y.min(), y.max()], [y.min(), y.max()], "r--")
+ax.set_xlabel("Actual AQI")
+ax.set_ylabel("Predicted AQI")
+st.pyplot(fig)
