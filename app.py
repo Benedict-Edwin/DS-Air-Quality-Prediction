@@ -9,6 +9,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression
 from xgboost import XGBRegressor
 import shap
+import io
 
 st.set_page_config(page_title="Air Quality Prediction", layout="wide")
 
@@ -25,11 +26,11 @@ df = load_data()
 if st.checkbox("Show raw data"):
     st.dataframe(df)
 
-# Show dataset info toggle
+# Show dataset info toggle with proper buffer
 if st.checkbox("Show data info"):
-    buffer = []
+    buffer = io.StringIO()
     df.info(buf=buffer)
-    info_str = "\n".join(buffer)
+    info_str = buffer.getvalue()
     st.text(info_str)
 
 # Correlation heatmap (numeric columns only)
@@ -43,7 +44,7 @@ plt.clf()
 # Prepare features and target
 X = df.drop(columns=['AQI', 'Date', 'AQI_Bucket', 'City'], errors='ignore')
 
-# Encode categorical columns if any left
+# Encode categorical columns if any remain
 for col in X.select_dtypes(include=['object']).columns:
     le = LabelEncoder()
     X[col] = le.fit_transform(X[col])
@@ -103,7 +104,6 @@ for col in X.columns:
     if np.issubdtype(df[col].dtype, np.number):
         input_data[col] = st.sidebar.slider(col, min_value=min_val, max_value=max_val, value=mean_val)
     else:
-        # For categorical columns (encoded), slider with integer range
         input_data[col] = st.sidebar.slider(col, min_value=int(min_val), max_value=int(max_val), value=int(mean_val))
 
 # Predict AQI for user input
