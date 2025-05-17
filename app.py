@@ -1,79 +1,117 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.linear_model import LinearRegression
+from xgboost import XGBRegressor
 import shap
 import joblib
 
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score
-from xgboost import XGBRegressor
-
 st.set_page_config(page_title="Air Quality Prediction", layout="wide")
-st.title("🌍 Air Quality Index Prediction")
-st.markdown("Predict AQI using machine learning algorithms with enhanced explainability and visualization.")
+
+st.title("Air Quality Index Prediction")
 
 # Load Dataset
 @st.cache_data
 def load_data():
     df = pd.read_csv("synthetic_air_quality_data.csv")
-    return df.dropna()
+    return df
 
 df = load_data()
-st.subheader("📊 Sample of Dataset")
-st.dataframe(df.head())
 
-# Data Visualization
-with st.expander("🔍 Data Correlation Heatmap"):
-    plt.figure(figsize=(12, 6))
-    sns.heatmap(df.corr(), annot=True, cmap="coolwarm")
-    st.pyplot(plt)
+# Show raw data toggle
+if st.checkbox("Show raw data"):
+    st.dataframe(df)
 
-# Feature Selection
-X = df.drop(['AQI'], axis=1)
+# Show dataset info
+if st.checkbox("Show data info"):
+    buffer = []
+    df.info(buf=buffer)
+    info_str = "\n".join(buffer)
+    st.text(info_str)
+
+# Correlation heatmap - fix by selecting numeric columns only
+st.subheader("Correlation Heatmap")
+numeric_df = df.select_dtypes(include=['number'])
+plt.figure(figsize=(10, 6))
+sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm")
+st.pyplot(plt)
+plt.clf()
+
+# Prepare data
+# Drop non-numeric or irrelevant columns if needed
+X = df.drop(['AQI', 'Date', 'AQI_Bucket', 'City'], axis=1, errors='ignore')
+
+# Encode categorical columns if any remain
+for col in X.select_dtypes(include=['object']).columns:
+    le = LabelEncoder()
+    X[col] = le.fit_transform(X[col])
+
 y = df['AQI']
 
-# Sidebar for model selection
-st.sidebar.title("Model Selection & Parameters")
-model_choice = st.sidebar.selectbox("Select Model", ["Random Forest", "XGBoost"])
-
-# Train-Test Split
+# Split data
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-if model_choice == "Random Forest":
-    n_estimators = st.sidebar.slider("n_estimators", 50, 300, 100)
-    model = RandomForestRegressor(n_estimators=n_estimators, random_state=42)
-else:
-    learning_rate = st.sidebar.slider("learning_rate", 0.01, 0.5, 0.1)
-    model = XGBRegressor(learning_rate=learning_rate, random_state=42)
+# Model selection
+model_option = st.selectbox("Choose regression model", ("Linear Regression", "XGBoost"))
 
-# Train Model
+if model_option == "Linear Regression":
+    model = LinearRegression()
+else:
+    model = XGBRegressor(objective='reg:squarederror', n_estimators=100, random_state=42)
+
+# Train model button
 if st.button("Train Model"):
     model.fit(X_train, y_train)
+    st.success("Model trained successfully!")
+
+    # Predictions
     y_pred = model.predict(X_test)
 
-    st.success("✅ Model Trained Successfully!")
-    st.metric("RMSE", f"{np.sqrt(mean_squared_error(y_test, y_pred)):.2f}")
-    st.metric("R² Score", f"{r2_score(y_test, y_pred):.2f}")
+    # Metrics
+    mae = mean_absolute_error(y_test, y_pred)
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test, y_pred)
 
-    # SHAP Explainability
-    st.subheader("🔍 Feature Importance using SHAP")
-    explainer = shap.Explainer(model, X_train)
-    shap_values = explainer(X_train)
+    st.write(f"MAE: {mae:.2f}")
+    st.write(f"MSE: {mse:.2f}")
+    st.write(f"RMSE: {rmse:.2f}")
+    st.write(f"R² Score: {r2:.2f}")
 
-    fig, ax = plt.subplots()
-    shap.plots.beeswarm(shap_values, max_display=10, show=False)
-    st.pyplot(fig)
+    # SHAP explanation for XGBoost
+    if model_option == "XGBoost":
+        explainer = shap.Explainer(model)
+        shap_values = explainer(X_test)
 
-# User Prediction
-st.subheader("📌 Predict AQI from Input")
+        st.subheader("SHAP Summary Plot")
+        plt.figure(figsize=(10, 6))
+        shap.summary_plot(shap_values, X_test, show=False)
+        st.pyplot(plt)
+        plt.clf()
+
+# Single prediction inputs
+st.sidebar.header("Make a Prediction")
+
 input_data = {}
 for col in X.columns:
-    input_data[col] = st.number_input(f"Enter {col}", value=float(df[col].mean()))
+    min_val = float(df[col].min())
+    max_val = float(df[col].max())
+    mean_val = float(df[col].mean())
 
-if st.button("Predict AQI"):
+    if df[col].dtype == 'float64' or df[col].dtype == 'int64':
+        input_data[col] = st.sidebar.slider(col, min_value=min_val, max_value=max_val, value=mean_val)
+    else:
+        # For categorical columns (already encoded), just slider for encoded range
+        input_data[col] = st.sidebar.slider(col, min_value=int(min_val), max_value=int(max_val), value=int(mean_val))
+
+# Predict button
+if st.sidebar.button("Predict AQI"):
     input_df = pd.DataFrame([input_data])
     prediction = model.predict(input_df)[0]
-    st.success(f"Predicted AQI: {prediction:.2f}")
+    st.sidebar.success(f"Predicted AQI: {prediction:.2f}")
+
