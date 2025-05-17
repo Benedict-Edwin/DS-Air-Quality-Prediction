@@ -26,12 +26,11 @@ df = load_data()
 if st.checkbox("Show raw data"):
     st.dataframe(df)
 
-# Show dataset info toggle with proper buffer
+# Show dataset info toggle with buffer
 if st.checkbox("Show data info"):
     buffer = io.StringIO()
     df.info(buf=buffer)
-    info_str = buffer.getvalue()
-    st.text(info_str)
+    st.text(buffer.getvalue())
 
 # Correlation heatmap (numeric columns only)
 st.subheader("Correlation Heatmap")
@@ -54,17 +53,25 @@ y = df['AQI']
 # Split dataset
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Select model
+# Model selection
 model_option = st.selectbox("Choose regression model", ("Linear Regression", "XGBoost"))
 
-if model_option == "Linear Regression":
-    model = LinearRegression()
-else:
-    model = XGBRegressor(objective='reg:squarederror', n_estimators=100, random_state=42)
+# Initialize model based on selection
+def get_model(name):
+    if name == "Linear Regression":
+        return LinearRegression()
+    else:
+        return XGBRegressor(objective='reg:squarederror', n_estimators=100, random_state=42)
+
+# Persist model in session state
+if "model" not in st.session_state:
+    st.session_state.model = None
 
 # Train model button
 if st.button("Train Model"):
+    model = get_model(model_option)
     model.fit(X_train, y_train)
+    st.session_state.model = model
     st.success("Model trained successfully!")
 
     # Predict on test set
@@ -92,22 +99,28 @@ if st.button("Train Model"):
         st.pyplot(plt)
         plt.clf()
 
-# Sidebar inputs for single prediction
+# Sidebar inputs for prediction
 st.sidebar.header("Make a Prediction")
 
 input_data = {}
 for col in X.columns:
-    min_val = float(df[col].min())
-    max_val = float(df[col].max())
-    mean_val = float(df[col].mean())
+    col_min = float(df[col].min())
+    col_max = float(df[col].max())
+    col_mean = float(df[col].mean())
 
-    if np.issubdtype(df[col].dtype, np.number):
-        input_data[col] = st.sidebar.slider(col, min_value=min_val, max_value=max_val, value=mean_val)
+    if np.issubdtype(df[col].dtype, np.integer):
+        input_data[col] = st.sidebar.slider(col, int(col_min), int(col_max), int(col_mean))
     else:
-        input_data[col] = st.sidebar.slider(col, min_value=int(min_val), max_value=int(max_val), value=int(mean_val))
+        input_data[col] = st.sidebar.slider(col, col_min, col_max, col_mean)
 
 # Predict AQI for user input
 if st.sidebar.button("Predict AQI"):
-    input_df = pd.DataFrame([input_data])
-    prediction = model.predict(input_df)[0]
-    st.sidebar.success(f"Predicted AQI: {prediction:.2f}")
+    if st.session_state.model is None:
+        st.sidebar.error("Please train the model first!")
+    else:
+        try:
+            input_df = pd.DataFrame([input_data])
+            prediction = st.session_state.model.predict(input_df)[0]
+            st.sidebar.success(f"Predicted AQI: {prediction:.2f}")
+        except Exception as e:
+            st.sidebar.error(f"Prediction error: {e}")
