@@ -1,0 +1,14 @@
+
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+import joblib
+
+# Create dummy data and model
+X = np.random.rand(100, 5)  # 100 samples, 5 features
+y = np.random.rand(100) * 300  # AQI values between 0-300
+
+model = RandomForestRegressor()
+model.fit(X, y)
+
+# Save the model
+joblib.dump(model, "air_quality_model.pkl")
