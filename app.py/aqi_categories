@@ -1,0 +1,8 @@
+aqi_categories = {
+    (0, 50): ("Good", "green"),
+    (51, 100): ("Moderate", "yellow"),
+    (101, 150): ("Unhealthy for Sensitive Groups", "orange"),
+    (151, 200): ("Unhealthy", "red"),
+    (201, 300): ("Very Unhealthy", "purple"),
+    (301, float('inf')): ("Hazardous", "maroon")
+}
