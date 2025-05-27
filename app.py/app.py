@@ -25,7 +25,7 @@ if uploaded_file:
 
     # Load trained model
     try:
-        model = joblib.load("air_quality_model.pkl")  # Ensure this exists
+        model = joblib.load("app.py/air_quality_model.pkl")  # Ensure this exists
     except FileNotFoundError:
         st.error("Model file not found! Please add 'air_quality_model.pkl'.")
         st.stop()
